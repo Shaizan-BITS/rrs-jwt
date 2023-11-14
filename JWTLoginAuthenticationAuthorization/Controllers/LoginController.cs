@@ -1,7 +1,10 @@
 ﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
-using RRS.JWTLoginAuthenticationAuthorization.Api.Models;
+using RRS.JWTLoginAuthenticationAuthorization.Api.Database;
+using RRS.JWTLoginAuthenticationAuthorization.Api.Dto;
+using RRS.JWTLoginAuthenticationAuthorization.Api.Model;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
@@ -13,27 +16,42 @@ namespace RRS.JWTLoginAuthenticationAuthorization.Api.Controllers
     public class LoginController : ControllerBase
     {
         private readonly IConfiguration _config;
-        public LoginController(IConfiguration config)
+        private readonly ApplicationDbContext applicationDbContext;
+
+        public LoginController(IConfiguration config, ApplicationDbContext applicationDbContext)
         {
             _config = config;
+            this.applicationDbContext = applicationDbContext;
         }
 
         [AllowAnonymous]
         [HttpPost]
-        public ActionResult Login([FromBody] UserLogin userLogin)
+        public async Task<IActionResult> Login([FromBody] UserLogin userLogin)
         {
-            var user = CheckIfUserExists(userLogin);
+            var user = await applicationDbContext.Users
+                                     .SingleOrDefaultAsync(u => u.Username == userLogin.Username);
+            if (user == null)
+            {
+                return Unauthorized("User does not exist.");
+            }
+
+            var passwordIsValid = user.Password == userLogin.Password;
+            if (!passwordIsValid)
+            {
+                return Unauthorized("Invalid password.");
+            }
+
             if (user != null)
             {
                 var token = GenerateToken(user);
-                return Ok(token);
+                return Ok(new { access_token = token });
             }
 
             return NotFound("User not found");
         }
 
         // To generate token
-        private string GenerateToken(UserModel user)
+        private string GenerateToken(User user)
         {
             var securityKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_config["Jwt:Key"]));
             var credentials = new SigningCredentials(securityKey, SecurityAlgorithms.HmacSha256);
@@ -48,21 +66,8 @@ namespace RRS.JWTLoginAuthenticationAuthorization.Api.Controllers
                 expires: DateTime.Now.AddMinutes(300),
                 signingCredentials: credentials);
 
-
             return new JwtSecurityTokenHandler().WriteToken(token);
-
         }
 
-        //To authenticate user
-        private UserModel CheckIfUserExists(UserLogin userLogin)
-        {
-            var currentUser = UserConstants.Users.FirstOrDefault(x => x.Username.ToLower() ==
-                userLogin.Username.ToLower() && x.Password == userLogin.Password);
-            if (currentUser != null)
-            {
-                return currentUser;
-            }
-            return null;
-        }
     }
 }

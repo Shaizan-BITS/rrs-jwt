@@ -1,4 +1,4 @@
-﻿namespace RRS.JWTLoginAuthenticationAuthorization.Api.Models
+﻿namespace RRS.JWTLoginAuthenticationAuthorization.Api.Dto
 {
     public class UserLogin
     {
